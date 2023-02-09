@@ -13,13 +13,16 @@
  *  LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
  *  OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
  *  PERFORMANCE OF THIS SOFTWARE.
- */
+**/
 
 const { createFFmpeg, fetchFile } = await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.11.6/+esm');
 
 export class VideoRecorder {
+  static get version() { return  '0.0.2'; };
 
-  static #ffmpeg; #rec; #chunks = [];
+  static #ffmpeg;
+
+  #rec; #chunks = [];
 
   constructor(video, name = 'recorded', mode = 'auto') {
     VideoRecorder.#initFFMpeg().finally(() => this.#initStream(video, name, mode));
@@ -37,7 +40,7 @@ export class VideoRecorder {
         const rec = this.#rec = new MediaRecorder(stream);
 
         rec.ondataavailable = ({ data }) => this.#chunks.push(data);
-        rec.onstop = () => VideoRecorder.save(name, this.#chunks);
+        rec.onstop = () => VideoRecorder.save(this.#chunks, name);
 
         if (mode === 'auto') {
           video.addEventListener('play', this.start);
@@ -56,24 +59,25 @@ export class VideoRecorder {
     this.#ffmpeg.setProgress(({ ratio }) => console.log(`${ (ratio || 0) * 100 }%`));
   }
 
-  static async save(name, chunks) {
+  static async save(chunks, name = 'o.webm') {
     if (!chunks.length) return false;
     const videoBlob = new Blob(chunks, { type: 'video/webm' });
-    const seekableBlob = this.#ffmpeg && await this.fixWebmCues(new File([ videoBlob ], name));
+    const seekableBlob = this.#ffmpeg && await this.fixWebmCues(videoBlob);
 
     this.download(seekableBlob || videoBlob, name);
     chunks.length = 0;
     return true
   }
 
-  static async fixWebmCues(file) { // fix duration & make video seekable
-    const { name } = file;
+  static async fixWebmCues(blob) { // fix duration & make video seekable
+    const src = 'i.webm', dst = 'o.webm';
+    const file = new File([ blob ], src);
     const { FS, fetch, ready, run } = this.#ffmpeg;
 
     await ready;
-    FS('writeFile', name, await fetch(file));
-    await run('-i', name, '-c', 'copy', 'output.webm');
-    const { buffer } = FS('readFile', 'output.webm');
+    FS('writeFile', src, await fetch(file));
+    await run('-i', src, '-c', 'copy', dst);
+    const { buffer } = FS('readFile', dst);
     return new Blob([ buffer ], { type: 'video/webm' });
   }
 
